@@ -32,6 +32,12 @@ int aiChargeInterval = 4000;
 ArrayList<Integer> aiLastTeleportTimes;
 int aiTeleportCooldown = 2000;
 
+ArrayList<Integer> aiBehaviorTypes;
+ArrayList<Float> aiRedShades;
+ArrayList<Integer> aiRespawnTimers;
+ArrayList<Boolean> aiIsAlive;
+int respawnDelay = 5000;
+
 int gameTicks = 0;
 int difficultyThreshold = 3000;
 int cameraShakeX = 0;
@@ -70,6 +76,10 @@ void setup() {
   aiCanTeleports = new ArrayList<Boolean>();
   aiLastChargeTimes = new ArrayList<Integer>();
   aiLastTeleportTimes = new ArrayList<Integer>();
+  aiBehaviorTypes = new ArrayList<Integer>();
+  aiRedShades = new ArrayList<Float>();
+  aiRespawnTimers = new ArrayList<Integer>();
+  aiIsAlive = new ArrayList<Boolean>();
   
   addAISnake(300, 300);
   
@@ -233,11 +243,19 @@ void addAISnake(float x, float y) {
   aiCanTeleports.add(false);
   aiLastChargeTimes.add(millis());
   aiLastTeleportTimes.add(0);
+  aiBehaviorTypes.add((int)random(0, 4));
+  aiRedShades.add(random(150, 255));
+  aiRespawnTimers.add(0);
+  aiIsAlive.add(true);
 }
 
 void updateAllAISnakes() {
   for (int i = 0; i < aiSnakes.size(); i++) {
-    updateAISnake(i);
+    if (aiIsAlive.get(i)) {
+      updateAISnake(i);
+    } else {
+      updateRespawnTimer(i);
+    }
   }
 }
 
@@ -276,8 +294,46 @@ void updateAISnake(int index) {
 
 void updateAllAITeleports() {
   for (int i = 0; i < aiSnakes.size(); i++) {
-    updateAITeleport(i);
+    if (aiIsAlive.get(i)) {
+      updateAITeleport(i);
+    }
   }
+}
+
+void updateRespawnTimer(int index) {
+  if (aiRespawnTimers.get(index) > 0) {
+    aiRespawnTimers.set(index, aiRespawnTimers.get(index) - 1);
+    if (aiRespawnTimers.get(index) <= 0) {
+      respawnAISnake(index);
+    }
+  }
+}
+
+void respawnAISnake(int index) {
+  float spawnX = random(50, width - 50);
+  float spawnY = random(50, height - 50);
+  
+  aiSnakes.get(index).clear();
+  for (int i = 0; i < 8; i++) {
+    aiSnakes.get(index).add(new PVector(spawnX - i * 8, spawnY));
+  }
+  
+  aiPosXs.set(index, spawnX);
+  aiPosYs.set(index, spawnY);
+  aiTargetXs.set(index, spawnX);
+  aiTargetYs.set(index, spawnY);
+  aiLastMoveTimes.set(index, millis());
+  aiFoodEatens.set(index, 0);
+  aiLastFoodTimes.set(index, millis());
+  aiChargeLevels.set(index, 0.0);
+  aiCanTeleports.set(index, false);
+  aiLastChargeTimes.set(index, millis());
+  aiLastTeleportTimes.set(index, 0);
+  aiBehaviorTypes.set(index, (int)random(0, 4));
+  aiRedShades.set(index, random(150, 255));
+  aiIsAlive.set(index, true);
+  
+  createLightningStrike(spawnX, spawnY);
 }
 
 void updateAITeleport(int index) {
@@ -311,6 +367,8 @@ void performAITeleport(int index) {
 }
 
 PVector getAITeleportTarget(int index) {
+  PVector target;
+  
   if (snake.size() > 1) {
     PVector playerHead = snake.get(0);
     float distToPlayer = dist(aiPosXs.get(index), aiPosYs.get(index), playerHead.x, playerHead.y);
@@ -319,21 +377,26 @@ PVector getAITeleportTarget(int index) {
       float angle = atan2(playerHead.y - aiPosYs.get(index), playerHead.x - aiPosXs.get(index)) + random(-PI/4, PI/4);
       float closeX = playerHead.x + cos(angle) * 60;
       float closeY = playerHead.y + sin(angle) * 60;
-      return new PVector(closeX, closeY);
+      target = new PVector(closeX, closeY);
+    } else {
+      float angle = atan2(playerHead.y - aiPosYs.get(index), playerHead.x - aiPosXs.get(index)) + PI;
+      float behindX = playerHead.x + cos(angle) * 70;
+      float behindY = playerHead.y + sin(angle) * 70;
+      target = new PVector(behindX, behindY);
     }
-    
-    float angle = atan2(playerHead.y - aiPosYs.get(index), playerHead.x - aiPosXs.get(index)) + PI;
-    float behindX = playerHead.x + cos(angle) * 70;
-    float behindY = playerHead.y + sin(angle) * 70;
-    return new PVector(behindX, behindY);
+  } else {
+    PVector nearestFood = findNearestFood(aiPosXs.get(index), aiPosYs.get(index));
+    if (nearestFood != null) {
+      target = nearestFood;
+    } else {
+      target = new PVector(random(50, width - 50), random(50, height - 50));
+    }
   }
   
-  PVector nearestFood = findNearestFood(aiPosXs.get(index), aiPosYs.get(index));
-  if (nearestFood != null) {
-    return nearestFood;
-  }
+  target.x = constrain(target.x, 50, width - 50);
+  target.y = constrain(target.y, 50, height - 50);
   
-  return new PVector(random(50, width - 50), random(50, height - 50));
+  return target;
 }
 
 void createAILightningBolt(float startX, float startY, float endX, float endY) {
@@ -362,40 +425,85 @@ void createAILightningBolt(float startX, float startY, float endX, float endY) {
 }
 
 PVector getAITarget(int index) {
+  int behaviorType = aiBehaviorTypes.get(index);
+  PVector target = null;
+  
   if (snake.size() > 1) {
     PVector playerHead = snake.get(0);
     float distToPlayer = dist(aiPosXs.get(index), aiPosYs.get(index), playerHead.x, playerHead.y);
     
-    if (distToPlayer < 150) {
-      float angle = atan2(playerHead.y - aiPosYs.get(index), playerHead.x - aiPosXs.get(index)) + PI;
-      float behindX = playerHead.x + cos(angle) * 40;
-      float behindY = playerHead.y + sin(angle) * 40;
-      return new PVector(behindX, behindY);
+    switch(behaviorType) {
+      case 0:
+        if (distToPlayer < 150) {
+          float angle = atan2(playerHead.y - aiPosYs.get(index), playerHead.x - aiPosXs.get(index)) + PI;
+          float behindX = playerHead.x + cos(angle) * 40;
+          float behindY = playerHead.y + sin(angle) * 40;
+          target = new PVector(behindX, behindY);
+        } else {
+          target = getCoordinatedTarget(index, playerHead);
+        }
+        break;
+        
+      case 1:
+        if (distToPlayer < 200) {
+          float angle = atan2(playerHead.y - aiPosYs.get(index), playerHead.x - aiPosXs.get(index)) + PI/3;
+          float circleX = playerHead.x + cos(angle) * 50;
+          float circleY = playerHead.y + sin(angle) * 50;
+          target = new PVector(circleX, circleY);
+        } else {
+          target = getCoordinatedTarget(index, playerHead);
+        }
+        break;
+        
+      case 2:
+        PVector playerTarget = findNearestFood(playerHead.x, playerHead.y);
+        if (playerTarget != null) {
+          float interceptX = playerHead.x + (playerTarget.x - playerHead.x) * 0.6;
+          float interceptY = playerHead.y + (playerTarget.y - playerHead.y) * 0.6;
+          target = new PVector(interceptX, interceptY);
+        } else {
+          target = getCoordinatedTarget(index, playerHead);
+        }
+        break;
+        
+      case 3:
+        target = getCoordinatedTarget(index, playerHead);
+        break;
     }
-    
-    if (distToPlayer < 200) {
-      float angle = atan2(playerHead.y - aiPosYs.get(index), playerHead.x - aiPosXs.get(index)) + PI/3;
-      float circleX = playerHead.x + cos(angle) * 50;
-      float circleY = playerHead.y + sin(angle) * 50;
-      return new PVector(circleX, circleY);
-    }
-    
-    PVector playerTarget = findNearestFood(playerHead.x, playerHead.y);
-    if (playerTarget != null) {
-      float interceptX = playerHead.x + (playerTarget.x - playerHead.x) * 0.6;
-      float interceptY = playerHead.y + (playerTarget.y - playerHead.y) * 0.6;
-      return new PVector(interceptX, interceptY);
-    }
-    
-    return playerHead;
   }
   
-  PVector nearestFood = findNearestFood(aiPosXs.get(index), aiPosYs.get(index));
-  if (nearestFood != null) {
-    return nearestFood;
+  if (target == null) {
+    PVector nearestFood = findNearestFood(aiPosXs.get(index), aiPosYs.get(index));
+    if (nearestFood != null) {
+      target = nearestFood;
+    } else {
+      target = new PVector(random(50, width - 50), random(50, height - 50));
+    }
   }
   
-  return new PVector(random(50, width - 50), random(50, height - 50));
+  target.x = constrain(target.x, 50, width - 50);
+  target.y = constrain(target.y, 50, height - 50);
+  
+  return target;
+}
+
+PVector getCoordinatedTarget(int index, PVector playerHead) {
+  PVector baseTarget = playerHead;
+  
+  for (int i = 0; i < aiSnakes.size(); i++) {
+    if (i != index && aiIsAlive.get(i)) {
+      float distToOther = dist(aiPosXs.get(index), aiPosYs.get(index), aiPosXs.get(i), aiPosYs.get(i));
+      if (distToOther < 100) {
+        float angle = atan2(aiPosYs.get(i) - aiPosYs.get(index), aiPosXs.get(i) - aiPosXs.get(index)) + PI;
+        float spreadX = aiPosXs.get(index) + cos(angle) * 60;
+        float spreadY = aiPosYs.get(index) + sin(angle) * 60;
+        baseTarget = new PVector(spreadX, spreadY);
+        break;
+      }
+    }
+  }
+  
+  return baseTarget;
 }
 
 void moveAITowardsTarget(int index) {
@@ -417,7 +525,11 @@ void moveAITowardsTarget(int index) {
 
 void drawAllAISnakes() {
   for (int snakeIndex = 0; snakeIndex < aiSnakes.size(); snakeIndex++) {
+    if (!aiIsAlive.get(snakeIndex)) continue;
+    
     ArrayList<PVector> currentSnake = aiSnakes.get(snakeIndex);
+    float redShade = aiRedShades.get(snakeIndex);
+    
     for (int i = 0; i < currentSnake.size(); i++) {
       PVector segment = currentSnake.get(i);
       
@@ -430,7 +542,7 @@ void drawAllAISnakes() {
         size = 10;
       }
       
-      fill(255, 100, 100, alpha);
+      fill(redShade, 100, 100, alpha);
       noStroke();
       ellipse(segment.x + cameraShakeX, segment.y + cameraShakeY, size, size);
     }
@@ -462,6 +574,8 @@ void checkAIFoodCollision(int index) {
 
 void checkAICollision() {
   for (int snakeIndex = 0; snakeIndex < aiSnakes.size(); snakeIndex++) {
+    if (!aiIsAlive.get(snakeIndex)) continue;
+    
     ArrayList<PVector> currentSnake = aiSnakes.get(snakeIndex);
     if (currentSnake.size() > 1) {
       for (int i = 1; i < currentSnake.size(); i++) {
@@ -478,19 +592,8 @@ void checkAICollision() {
         PVector playerSegment = snake.get(i);
         if (dist(aiPosXs.get(snakeIndex), aiPosYs.get(snakeIndex), playerSegment.x, playerSegment.y) < 12) {
           createDeathOrbs(aiPosXs.get(snakeIndex), aiPosYs.get(snakeIndex));
-          aiSnakes.remove(snakeIndex);
-          aiSnakeSizes.remove(snakeIndex);
-          aiPosXs.remove(snakeIndex);
-          aiPosYs.remove(snakeIndex);
-          aiTargetXs.remove(snakeIndex);
-          aiTargetYs.remove(snakeIndex);
-          aiLastMoveTimes.remove(snakeIndex);
-          aiFoodEatens.remove(snakeIndex);
-          aiLastFoodTimes.remove(snakeIndex);
-          aiChargeLevels.remove(snakeIndex);
-          aiCanTeleports.remove(snakeIndex);
-          aiLastChargeTimes.remove(snakeIndex);
-          aiLastTeleportTimes.remove(snakeIndex);
+          aiIsAlive.set(snakeIndex, false);
+          aiRespawnTimers.set(snakeIndex, respawnDelay);
           score += 50;
           break;
         }
@@ -534,13 +637,18 @@ void drawDeathOrbs() {
 }
 
 PVector findNearestFood(float x, float y) {
-  PVector nearest = null;
-  float minDist = Float.MAX_VALUE;
+  if (food.size() == 0) {
+    return null;
+  }
   
-  for (PVector f : food) {
-    float dist = dist(x, y, f.x, f.y);
-    if (dist < minDist) {
-      minDist = dist;
+  PVector nearest = food.get(0);
+  float minDist = dist(x, y, nearest.x, nearest.y);
+  
+  for (int i = 1; i < food.size(); i++) {
+    PVector f = food.get(i);
+    float currentDist = dist(x, y, f.x, f.y);
+    if (currentDist < minDist) {
+      minDist = currentDist;
       nearest = f;
     }
   }
@@ -710,6 +818,10 @@ void mousePressed() {
     aiCanTeleports.clear();
     aiLastChargeTimes.clear();
     aiLastTeleportTimes.clear();
+    aiBehaviorTypes.clear();
+    aiRedShades.clear();
+    aiRespawnTimers.clear();
+    aiIsAlive.clear();
     
     addAISnake(300, 300);
     
