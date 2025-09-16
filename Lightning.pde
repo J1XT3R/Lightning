@@ -40,6 +40,8 @@ int respawnDelay = 5000;
 
 int gameTicks = 0;
 int difficultyThreshold = 3000;
+int lastSnakeSpawnTime = 0;
+int snakeSpawnInterval = 10000;
 int cameraShakeX = 0;
 int cameraShakeY = 0;
 int shakeDuration = 0;
@@ -87,6 +89,7 @@ void setup() {
   orbLifespan = new ArrayList<Float>();
   
   lastChargeTime = millis();
+  lastSnakeSpawnTime = millis();
   
   for (int i = 0; i < 20; i++) {
     spawnFood();
@@ -658,6 +661,18 @@ PVector findNearestFood(float x, float y) {
 
 void updateGameTicks() {
   gameTicks++;
+  
+  if (score >= 1500) {
+    int currentTime = millis();
+    if (currentTime - lastSnakeSpawnTime >= snakeSpawnInterval) {
+      float spawnX = random(50, width - 50);
+      float spawnY = random(50, height - 50);
+      createLightningStrike(spawnX, spawnY);
+      addAISnake(spawnX, spawnY);
+      lastSnakeSpawnTime = currentTime;
+    }
+  }
+  
   if (gameTicks >= difficultyThreshold) {
     gameTicks = 0;
     difficultyThreshold += 2000;
@@ -827,6 +842,7 @@ void mousePressed() {
     
     gameTicks = 0;
     difficultyThreshold = 3000;
+    lastSnakeSpawnTime = millis();
     
     deathOrbs.clear();
     orbLifespan.clear();
