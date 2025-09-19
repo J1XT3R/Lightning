@@ -393,7 +393,7 @@ class BoneAttack {
 }
 
 void setup() {
-  size(800, 400, P2D);
+  size(800, 400);
   strokeWeight(2);
   background(0);
   
@@ -838,9 +838,7 @@ void applyLighting() {
     constrain(baseB + 15 * sin(t * 0.6 + 2.1), 0, 255)
   );
 
-  blendMode(ADD);
   drawLight(posX, posY, c1, lightRadius * boost);
-  blendMode(BLEND);
 }
 
 void drawLight(float x, float y, int c, float radius) {
@@ -848,14 +846,14 @@ void drawLight(float x, float y, int c, float radius) {
   translate(x, y);
   float s = (radius * 2.0) / lightSprite.width;
   scale(s, s);
-  tint(red(c), green(c), blue(c), 255);
+  tint(red(c), green(c), blue(c), 100);
   imageMode(CENTER);
   image(lightSprite, 0, 0);
   popMatrix();
 }
 
 PGraphics makeLightSprite(int size, float fillFrac) {
-  PGraphics pg = createGraphics(size, size, P2D);
+  PGraphics pg = createGraphics(size, size);
   pg.beginDraw();
   pg.loadPixels();
   int w = pg.width;
